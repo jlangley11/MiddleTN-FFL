@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Middle TN Fantasy Football</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #FF8200; /* Tennessee Orange */
+        }
+        #team-name-form, #draft-form, #keeper-form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #FF8200; /* Tennessee Orange */
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #E57300; /* Darker Tennessee Orange */
+        }
+        .small-button {
+            padding: 5px 10px;
+            font-size: 0.8em;
+            background-color: #ccc;
+            color: black;
+        }
+        .small-button:hover {
+            background-color: #bbb;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #FF8200; /* Tennessee Orange */
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Middle TN Fantasy Football</h1>
+    <h2 id="current-team">Confirm Team Names</h2>
+
+    <div id="team-name-form">
+        <div id="team-name-inputs"></div>
+        <button onclick="confirmTeamNames()">Confirm Team Names</button>
+    </div>
+
+    <div id="keeper-form" style="display:none;">
+        <input type="text" id="keeper-player-name" placeholder="Keeper Player Name" onkeypress="handleKeyPress(event, 'keeper')">
+        <input type="number" id="keeper-round" placeholder="Round" min="1" max="14" onkeypress="handleKeyPress(event, 'keeper')">
+        <button onclick="addKeeper()">Submit Keeper</button>
+        <button onclick="skipKeeper()">Skip Keeper</button>
+        <button class="small-button" onclick="undoLastAction()">Undo</button>
+    </div>
+
+    <div id="draft-form" style="display:none;">
+        <input type="text" id="player-name" placeholder="Player Name" required onkeypress="handleKeyPress(event, 'draft')">
+        <button onclick="addDraftPick()">Submit Pick</button>
+        <button class="small-button" onclick="undoLastAction()">Undo</button>
+        <button class="small-button" onclick="downloadCSV()">Download CSV</button>
+    </div>
+
+    <table id="draft-table">
+        <thead>
+            <tr>
+                <th>Round</th>
+                <th>Pick Number</th>
+                <th>Team Name</th>
+                <th>Player Name</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Draft picks will be added here -->
+        </tbody>
+    </table>
+
+    <script>
+        let teams = [
+            'Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5',
+            'Team 6', 'Team 7', 'Team 8', 'Team 9', 'Team 10'
+        ];
+        const totalRounds = 14;
+        let pickNumber = 1;
+        let currentTeamIndex = 0;
+        let round = 1;
+        let direction = 1; // 1 for forward, -1 for reverse
+        const historyStack = [];
+
+        function showTeamNameInputs() {
+            const teamNameInputs = document.getElementById('team-name-inputs');
+            teams.forEach((team, index) => {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = team;
+                input.id = `team-name-${index}`;
+                input.placeholder = `Enter name for ${team}`;
+                teamNameInputs.appendChild(input);
+            });
+        }
+
+        showTeamNameInputs();
+
+        function handleKeyPress(event, formType) {
+            if (event.key === 'Enter') {
+                if (formType === 'keeper') {
+                    addKeeper();
+                } else if (formType === 'draft') {
+                    addDraftPick();
+                }
+            }
+        }
+
+        function confirmTeamNames() {
+            teams = teams.map((_, index) => document.getElementById(`team-name-${index}`).value);
+            document.getElementById('team-name-form').style.display = 'none';
+            document.getElementById('keeper-form').style.display = 'flex';
+            document.getElementById('current-team').textContent = `Keeper Round: ${teams[currentTeamIndex]}, select your keeper!`;
+            createDraftTable();
+        }
+
+        function createDraftTable() {
+            const table = document.getElementById('draft-table').getElementsByTagName('tbody')[0];
+            for (let r = 1; r <= totalRounds; r++) {
+                for (let i = 0; i < teams.length; i++) {
+                    const newRow = table.insertRow();
+                    const cell1 = newRow.insertCell(0);
+                    const cell2 = newRow.insertCell(1);
+                    const cell3 = newRow.insertCell(2);
+                    const cell4 = newRow.insertCell(3);
+
+                    cell1.textContent = r;
+                    cell2.textContent = pickNumber;
+                    cell3.contentEditable = true;
+                    cell3.textContent = teams[currentTeamIndex];
+                    cell3.addEventListener('input', () => updateTeamNames(r, i, cell3.textContent));
+                    cell4.contentEditable = true;
+                    cell4.textContent = '';
+
+                    pickNumber++;
+                    currentTeamIndex += direction;
+                }
+                direction *= -1; // Reverse direction at end of each round
+                currentTeamIndex += direction;
+            }
+            pickNumber = 1; // Reset for adding picks
+            currentTeamIndex = 0; // Reset for first pick
+            direction = 1; // Reset direction
+        }
+
+        function updateTeamNames(round, teamIndex, newName) {
+            const table = document.getElementById('draft-table').getElementsByTagName('tbody')[0];
+            for (let r = 0; r < totalRounds; r++) {
+                const rowIndex = r * teams.length + teamIndex;
+                const row = table.rows[rowIndex];
+                row.cells[2].textContent = newName;
+            }
+        }
+
+        function addKeeper() {
+            const playerName = document.getElementById('keeper-player-name').value;
+            const keeperRound = parseInt(document.getElementById('keeper-round').value);
+
+            if (playerName && keeperRound >= 1 && keeperRound <= totalRounds) {
+                const table = document.getElementById('draft-table').getElementsByTagName('tbody')[0];
+                const roundStartIndex = (keeperRound - 1) * teams.length;
+                const roundDirection = keeperRound % 2 === 1 ? 1 : -1;
+                const teamIndex = roundDirection === 1 ? currentTeamIndex : teams.length - 1 - currentTeamIndex;
+                const rowIndex = roundStartIndex + teamIndex;
+
+                historyStack.push({ rowIndex, previousPlayer: table.rows[rowIndex].cells[3].textContent, isKeeper: true });
+                table.rows[rowIndex].cells[3].textContent = playerName;
+
+                advanceKeeperRound();
+            } else {
+                alert('Please enter a valid keeper player name and round.');
+            }
+        }
+
+        function skipKeeper() {
+            advanceKeeperRound();
+        }
+
+        function advanceKeeperRound() {
+            currentTeamIndex++;
+            if (currentTeamIndex >= teams.length) {
+                currentTeamIndex = 0;
+                document.getElementById('keeper-form').style.display = 'none';
+                document.getElementById('draft-form').style.display = 'flex';
+                updateDraftPrompt();
+            } else {
+                document.getElementById('current-team').textContent = `Keeper Round: ${teams[currentTeamIndex]}, select your keeper!`;
+            }
+
+            document.getElementById('keeper-player-name').value = '';
+            document.getElementById('keeper-round').value = '';
+        }
+
+        function updateDraftPrompt() {
+            const table = document.getElementById('draft-table').getElementsByTagName('tbody')[0];
+            while (pickNumber <= totalRounds * teams.length && table.rows[pickNumber - 1].cells[3].textContent !== '') {
+                pickNumber++;
+                currentTeamIndex += direction;
+                if (currentTeamIndex === teams.length || currentTeamIndex < 0) {
+                    direction *= -1;
+                    currentTeamIndex += direction;
+                    round++;
+                }
+            }
+
+            if (pickNumber <= totalRounds * teams.length) {
+                document.getElementById('current-team').textContent = `Round ${round}: ${table.rows[pickNumber - 1].cells[2].textContent}, it's your turn to draft!`;
+            } else {
+                document.getElementById('current-team').textContent = 'Draft completed!';
+            }
+        }
+
+        function addDraftPick() {
+            const playerName = document.getElementById('player-name').value;
+            if (playerName) {
+                const table = document.getElementById('draft-table').getElementsByTagName('tbody')[0];
+                const row = table.rows[pickNumber - 1];
+
+                historyStack.push({ rowIndex: pickNumber - 1, previousPlayer: row.cells[3].textContent, isKeeper: false });
+                row.cells[3].textContent = playerName;
+
+                pickNumber++;
+                currentTeamIndex += direction;
+
+                if (currentTeamIndex === teams.length || currentTeamIndex < 0) {
+                    direction *= -1;
+                    currentTeamIndex += direction;
+                    round++;
+                }
+
+                document.getElementById('player-name').value = '';
+                updateDraftPrompt();
+            } else {
+                alert('Please enter a player name.');
+            }
+        }
+
+        function undoLastAction() {
+            if (historyStack.length > 0) {
+                const lastAction = historyStack.pop();
+                const table = document.getElementById('draft-table').getElementsByTagName('tbody')[0];
+                table.rows[lastAction.rowIndex].cells[3].textContent = lastAction.previousPlayer;
+
+                if (lastAction.isKeeper) {
+                    currentTeamIndex--;
+                    if (currentTeamIndex < 0) currentTeamIndex = teams.length - 1;
+                    document.getElementById('keeper-form').style.display = 'flex';
+                    document.getElementById('draft-form').style.display = 'none';
+                    document.getElementById('current-team').textContent = `Keeper Round: ${teams[currentTeamIndex]}, select your keeper!`;
+                } else {
+                    pickNumber--;
+                    currentTeamIndex -= direction;
+
+                    if (currentTeamIndex < 0 || currentTeamIndex === teams.length) {
+                        direction *= -1;
+                        currentTeamIndex -= direction;
+                        round--;
+                    }
+                    updateDraftPrompt();
+                }
+            }
+        }
+
+        function downloadCSV() {
+            const table = document.getElementById('draft-table');
+            let csvContent = 'Round,Pick Number,Team Name,Player Name\n';
+
+            Array.from(table.rows).slice(1).forEach(row => {
+                const cells = Array.from(row.cells).map(cell => cell.textContent);
+                csvContent += cells.join(',') + '\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', 'draft_results.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+
+</body>
+</html>
